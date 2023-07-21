@@ -16,6 +16,7 @@ import (
 	"gorm.io/gorm"
 )
 
+//Checks that the Service is running fine
 func serviceHealthHandler(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"message": "The API is running fine",
@@ -23,6 +24,7 @@ func serviceHealthHandler(c *fiber.Ctx) error {
 	})
 }
 
+//Application Route Setup
 func setupRoutes(app *fiber.App) {
 	app.Use(cors.New())
 	app.Use(compress.New())
@@ -37,14 +39,20 @@ func setupRoutes(app *fiber.App) {
 	auth.AuthRoute(api.Group("/auth"))
 }
 
+//Database Setup
+var DB *gorm.DB
+
+func GetDB() *gorm.DB {
+	return DB
+}
+
 func setupDB() {
+
 	dbPassword := os.Getenv("DB_PASSWORD")
 	dbHost := os.Getenv("DB_HOST")
 	dbName := os.Getenv("DB_NAME")
 	dbUserName := os.Getenv("DB_USERNAME")
-	dbPort := os.Getenv("DB_PORT")
 
-	fmt.Println(dbPassword, dbHost, dbName, dbUserName, dbPort)
 	dbUrl := fmt.Sprintf("%s:%s@tcp(%s)/%s?charset=utf8mb4&parseTime=True&loc=Local", dbUserName, dbPassword, dbHost, dbName)
 
 	db, err := gorm.Open(mysql.Open(dbUrl), &gorm.Config{})
@@ -53,6 +61,7 @@ func setupDB() {
 	}
 
 	db.AutoMigrate(&user.User{})
+	DB = db
 }
 
 func main() {
@@ -60,10 +69,10 @@ func main() {
 	if err != nil {
 		log.Fatal("Error loading .env file")
 	}
+	setupDB()
 	app := fiber.New()
 
 	setupRoutes(app)
 
-	setupDB()
-	app.Listen("localhost:3000")
+	log.Fatal(app.Listen("localhost:3000"))
 }
