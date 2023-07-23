@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/adeisbright/fiber-user-auth/src/common"
 	"github.com/adeisbright/fiber-user-auth/src/features/user"
 	"github.com/adeisbright/fiber-user-auth/src/loaders"
 	"github.com/dgrijalva/jwt-go"
@@ -54,9 +55,15 @@ func (h Handler) AddUser(c *fiber.Ctx) error {
 		})
 	}
 
+	hashedPassword, error := common.HashPassword(body.Password)
+	if error != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, error.Error())
+	}
+
+	fmt.Println(hashedPassword)
 	user.Username = body.Username
 	user.Email = body.Email
-	user.Password = body.Password
+	user.Password = hashedPassword
 
 	if result := h.DB.Create(&user); result.Error != nil {
 		return fiber.NewError(fiber.StatusNotFound, result.Error.Error())
@@ -84,7 +91,7 @@ func (h Handler) CheckLogin(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "User not found"})
 	}
 
-	if foundUser.Password != validUser.Password {
+	if !common.CheckPasswordHash(body.Password, foundUser.Password) {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid credentials"})
 	}
 
