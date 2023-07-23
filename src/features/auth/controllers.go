@@ -4,14 +4,15 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/adeisbright/fiber-user-auth/src/common"
 	"github.com/adeisbright/fiber-user-auth/src/features/user"
+	"github.com/adeisbright/fiber-user-auth/src/loaders"
 	"github.com/dgrijalva/jwt-go"
 	"github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
 )
 
 var jwtSecret = []byte("example")
-var db *gorm.DB
 
 func GenerateJWTToken(userID uint) (string, error) {
 
@@ -28,40 +29,53 @@ type UserSchema struct {
 	Password string `json:"password"`
 }
 
-func HandleRegistration(c *fiber.Ctx) error {
-	var validUser user.User
+type Handler struct {
+	DB *gorm.DB
+}
 
+func (h Handler) GetUsers(c *fiber.Ctx) error {
+	var users []user.User
+
+	if result := h.DB.Find(&users); result.Error != nil {
+		return fiber.NewError(fiber.StatusNotFound, result.Error.Error())
+	}
+
+	return c.Status(fiber.StatusOK).JSON(&users)
+}
+
+func (h Handler) AddUser(c *fiber.Ctx) error {
+	var user user.User
 	body := UserSchema{}
 
 	err := c.BodyParser(&body)
-
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"message": "Invalid request",
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"message": "Internal Server Error",
 			"success": false,
 		})
 	}
 
-	validUser.Email = body.Email
-	validUser.Username = body.Username
-	validUser.Password = body.Password
-
-	err = db.Create(user.User{
-		Email:    "Adebayo",
-		Username: "Someto",
-		Password: "123456",
-	}).Error
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create user"})
+	hashedPassword, error := common.HashPassword(body.Password)
+	if error != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, error.Error())
 	}
 
-	fmt.Println("Everything fine here")
-	return c.JSON(validUser)
+	fmt.Println(hashedPassword)
+	user.Username = body.Username
+	user.Email = body.Email
+	user.Password = hashedPassword
+
+	if result := h.DB.Create(&user); result.Error != nil {
+		return fiber.NewError(fiber.StatusNotFound, result.Error.Error())
+	}
+
+	return c.Status(fiber.StatusOK).JSON(&user)
 }
 
-func HandleLgoin(c *fiber.Ctx) error {
+func (h Handler) CheckLogin(c *fiber.Ctx) error {
 	var validUser user.User
-	err := c.BodyParser(&validUser)
+	body := UserSchema{}
+	err := c.BodyParser(&body)
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"message": "Bad Request",
@@ -69,12 +83,15 @@ func HandleLgoin(c *fiber.Ctx) error {
 		})
 	}
 
+	validUser.Username = body.Username
+	validUser.Password = body.Password
+
 	var foundUser user.User
-	if err := db.Where("username = ?", validUser.Username).First(&foundUser).Error; err != nil {
+	if err := h.DB.Where("username = ?", validUser.Username).First(&foundUser).Error; err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "User not found"})
 	}
 
-	if foundUser.Password != validUser.Password {
+	if !common.CheckPasswordHash(body.Password, foundUser.Password) {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid credentials"})
 	}
 
@@ -83,13 +100,69 @@ func HandleLgoin(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to generate JWT token"})
 	}
 
+	expirationTime := time.Now().Add(time.Hour * 24).Unix()
+	redisKey := "user:" + fmt.Sprint(foundUser.ID)
+	err = loaders.ConnectToRedis().Set(redisKey, validUser.Username, time.Duration(expirationTime)).Err()
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"success": false,
+			"token":   "",
+		})
+	}
+
 	return c.JSON(fiber.Map{"token": token})
 }
 
-func AuthenticateRequest(c *fiber.Ctx) error {
-	return c.SendString("Authentication: Not Implemented Yet")
+func ValidateToken(c *fiber.Ctx) error {
+	// Extract the token from the Authorization header
+	authHeader := c.Get("Authorization")
+	if len(authHeader) < 8 || authHeader[:7] != "Bearer " {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
+	}
+
+	tokenString := authHeader[7:]
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		return jwtSecret, nil
+	})
+	if err != nil || !token.Valid {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
+	}
+
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
+	}
+
+	userID := uint(claims["user_id"].(float64))
+
+	c.Locals("userId", userID)
+	return c.Next()
+
 }
 
-func ProtectedProfileHandler(c *fiber.Ctx) error {
-	return c.SendString("Profile: Not Implemented Yet")
+func GetUser(c *fiber.Ctx) error {
+	userId := c.Params("id")
+	loggedInUserId := c.Locals("userId")
+	if userId != loggedInUserId {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"success": false,
+			"message": "You cannot view this users profile",
+		})
+	}
+
+	redisKey := "user:" + userId
+	data := loaders.ConnectToRedis().Get(redisKey)
+	fmt.Println(data)
+
+	if data == nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"success": false,
+			"token":   "",
+		})
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "Welcome to your profile",
+		"data":    userId,
+		"success": true,
+	})
 }

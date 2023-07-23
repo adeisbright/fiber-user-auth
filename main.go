@@ -7,14 +7,18 @@ import (
 
 	"github.com/adeisbright/fiber-user-auth/src/features/auth"
 	"github.com/adeisbright/fiber-user-auth/src/features/user"
+	"github.com/adeisbright/fiber-user-auth/src/loaders"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/compress"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/joho/godotenv"
+
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
+
+var DB *gorm.DB
 
 //Checks that the Service is running fine
 func serviceHealthHandler(c *fiber.Ctx) error {
@@ -36,11 +40,12 @@ func setupRoutes(app *fiber.App) {
 	app.Get("/", serviceHealthHandler)
 
 	api := app.Group("")
-	auth.AuthRoute(api.Group("/auth"))
+	auth.AuthRoute(api.Group("/auth"), DB)
+	app.Use(auth.ValidateToken)
+	app.Get("/users/:id", auth.GetUser)
 }
 
 //Database Setup
-var DB *gorm.DB
 
 func GetDB() *gorm.DB {
 	return DB
@@ -59,17 +64,32 @@ func setupDB() {
 	if err != nil {
 		panic("Failed to connect to database")
 	}
-
-	db.AutoMigrate(&user.User{})
 	DB = db
+	db.AutoMigrate(&user.User{})
+
 }
 
 func main() {
+	// password := "secret"
+	// hash, _ := HashPassword(password) // ignore error for the sake of simplicity
+
+	// fmt.Println("Password:", password)
+	// fmt.Println("Hash:    ", hash)
+
+	// match := CheckPasswordHash(password, hash)
+	// fmt.Println("Match:   ", match)
+
 	err := godotenv.Load(".env")
 	if err != nil {
 		log.Fatal("Error loading .env file")
 	}
 	setupDB()
+
+	_, error := loaders.ConnectToRedis().Ping().Result()
+	if error != nil {
+		fmt.Println("Issues with connecting to redis", err)
+	}
+
 	app := fiber.New()
 
 	setupRoutes(app)
