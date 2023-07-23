@@ -5,7 +5,6 @@ import (
 	"log"
 	"os"
 
-	"github.com/adeisbright/fiber-user-auth/src/config"
 	"github.com/adeisbright/fiber-user-auth/src/features/auth"
 	"github.com/adeisbright/fiber-user-auth/src/features/user"
 	"github.com/adeisbright/fiber-user-auth/src/loaders"
@@ -39,7 +38,7 @@ func setupRoutes(app *fiber.App) {
 	}))
 
 	app.Get("/", serviceHealthHandler)
-	app.Post("/cities", AddCity)
+
 	api := app.Group("")
 	auth.AuthRoute(api.Group("/auth"))
 	auth.RegisterRoute(api.Group("/test"), DB)
@@ -51,14 +50,6 @@ func setupRoutes(app *fiber.App) {
 
 func GetDB() *gorm.DB {
 	return DB
-}
-
-type City struct {
-	gorm.Model
-
-	ID          uint   `gorm:"primarykey"`
-	Title       string `gorm:"index"`
-	Description string
 }
 
 func setupDB() {
@@ -76,34 +67,7 @@ func setupDB() {
 	}
 	DB = db
 	db.AutoMigrate(&user.User{})
-	db.AutoMigrate(&City{})
 
-}
-
-func AddCity(c *fiber.Ctx) error {
-
-	type CitySchema struct {
-		Title       string `json:"title"`
-		Description string `json:"description"`
-	}
-
-	body := CitySchema{}
-
-	var city City
-
-	err := c.BodyParser(&body)
-	if err != nil {
-		return c.Status(fiber.StatusBadRequest).SendString("Bad Request")
-	}
-	city.Title = body.Title
-	city.Description = body.Description
-
-	err = DB.Create(&city).Error
-	if err != nil {
-		return c.Status(fiber.StatusBadRequest).SendString("Could not add city")
-	}
-
-	return c.JSON(city)
 }
 
 func HashPassword(password string) (string, error) {
@@ -132,13 +96,11 @@ func main() {
 	}
 	setupDB()
 
-	response, error := loaders.ConnectToRedis().Ping().Result()
+	_, error := loaders.ConnectToRedis().Ping().Result()
 	if error != nil {
 		fmt.Println("Issues with connecting to redis", err)
 	}
-	fmt.Println(response)
-	hostName := config.AppConfig.DBHost
-	fmt.Println(hostName, "where is the name")
+
 	app := fiber.New()
 
 	setupRoutes(app)
