@@ -40,8 +40,7 @@ func setupRoutes(app *fiber.App) {
 	app.Get("/", serviceHealthHandler)
 
 	api := app.Group("")
-	auth.AuthRoute(api.Group("/auth"))
-	auth.RegisterRoute(api.Group("/test"), DB)
+	auth.AuthRoute(api.Group("/auth"), DB)
 	app.Use(auth.ValidateToken)
 	app.Get("/users/:id", auth.GetUser)
 }

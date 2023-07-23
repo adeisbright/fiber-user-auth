@@ -12,7 +12,6 @@ import (
 )
 
 var jwtSecret = []byte("example")
-var db *gorm.DB
 
 func GenerateJWTToken(userID uint) (string, error) {
 
@@ -29,73 +28,6 @@ type UserSchema struct {
 	Password string `json:"password"`
 }
 
-func HandleRegistration(c *fiber.Ctx) error {
-	var validUser user.User
-
-	body := UserSchema{}
-
-	err := c.BodyParser(&body)
-
-	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"message": "Invalid request",
-			"success": false,
-		})
-	}
-
-	validUser.Email = body.Email
-	validUser.Username = body.Username
-	validUser.Password = body.Password
-
-	err = db.Create(user.User{
-		Email:    "Adebayo",
-		Username: "Someto",
-		Password: "123456",
-	}).Error
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create user"})
-	}
-
-	fmt.Println("Everything fine here")
-	return c.JSON(validUser)
-}
-
-func HandleLgoin(c *fiber.Ctx) error {
-	var validUser user.User
-	err := c.BodyParser(&validUser)
-	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"message": "Bad Request",
-			"success": false,
-		})
-	}
-
-	var foundUser user.User
-	if err := db.Where("username = ?", validUser.Username).First(&foundUser).Error; err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "User not found"})
-	}
-
-	if foundUser.Password != validUser.Password {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid credentials"})
-	}
-
-	token, err := GenerateJWTToken(foundUser.ID)
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to generate JWT token"})
-	}
-
-	return c.JSON(fiber.Map{"token": token})
-}
-
-func AuthenticateRequest(c *fiber.Ctx) error {
-	return c.SendString("Authentication: Not Implemented Yet")
-}
-
-func ProtectedProfileHandler(c *fiber.Ctx) error {
-	return c.SendString("Profile: Not Implemented Yet")
-}
-
-//Testing Pointer Receiver Pattern
 type Handler struct {
 	DB *gorm.DB
 }
@@ -143,6 +75,7 @@ func (h Handler) CheckLogin(c *fiber.Ctx) error {
 			"success": false,
 		})
 	}
+
 	validUser.Username = body.Username
 	validUser.Password = body.Password
 
@@ -159,6 +92,7 @@ func (h Handler) CheckLogin(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to generate JWT token"})
 	}
+
 	expirationTime := time.Now().Add(time.Hour * 24).Unix()
 	redisKey := "user:" + fmt.Sprint(foundUser.ID)
 	err = loaders.ConnectToRedis().Set(redisKey, validUser.Username, time.Duration(expirationTime)).Err()
@@ -193,11 +127,6 @@ func ValidateToken(c *fiber.Ctx) error {
 	}
 
 	userID := uint(claims["user_id"].(float64))
-
-	// var user user.User
-	// if err := db.First(&user, userID).Error; err != nil {
-	// 	return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "User not found"})
-	// }
 
 	c.Locals("userId", userID)
 	return c.Next()
