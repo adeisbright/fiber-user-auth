@@ -8,11 +8,13 @@ import (
 	"github.com/adeisbright/fiber-user-auth/src/config"
 	"github.com/adeisbright/fiber-user-auth/src/features/auth"
 	"github.com/adeisbright/fiber-user-auth/src/features/user"
+	"github.com/adeisbright/fiber-user-auth/src/loaders"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/compress"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/joho/godotenv"
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
@@ -104,12 +106,37 @@ func AddCity(c *fiber.Ctx) error {
 	return c.JSON(city)
 }
 
+func HashPassword(password string) (string, error) {
+	bytes, err := bcrypt.GenerateFromPassword([]byte(password), 14)
+	return string(bytes), err
+}
+
+func CheckPasswordHash(password, hash string) bool {
+	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
+	return err == nil
+}
+
 func main() {
+	password := "secret"
+	hash, _ := HashPassword(password) // ignore error for the sake of simplicity
+
+	fmt.Println("Password:", password)
+	fmt.Println("Hash:    ", hash)
+
+	match := CheckPasswordHash(password, hash)
+	fmt.Println("Match:   ", match)
+
 	err := godotenv.Load(".env")
 	if err != nil {
 		log.Fatal("Error loading .env file")
 	}
 	setupDB()
+
+	response, error := loaders.ConnectToRedis().Ping().Result()
+	if error != nil {
+		fmt.Println("Issues with connecting to redis", err)
+	}
+	fmt.Println(response)
 	hostName := config.AppConfig.DBHost
 	fmt.Println(hostName, "where is the name")
 	app := fiber.New()

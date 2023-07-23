@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"github.com/adeisbright/fiber-user-auth/src/middleware"
 	"github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
 )
@@ -17,6 +18,6 @@ func RegisterRoute(route fiber.Router, db *gorm.DB) {
 		DB: db,
 	}
 	route.Get("/users", h.GetUsers)
-	route.Post("/users", h.AddUser)
+	route.Post("/users", middleware.ValidateCreateUser, h.AddUser)
 	route.Post("/login", h.CheckLogin)
 }
