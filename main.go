@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/adeisbright/fiber-user-auth/src/common"
 	"github.com/adeisbright/fiber-user-auth/src/features/auth"
 	"github.com/adeisbright/fiber-user-auth/src/features/user"
 	"github.com/adeisbright/fiber-user-auth/src/loaders"
@@ -62,31 +63,28 @@ func setupDB() {
 
 	db, err := gorm.Open(mysql.Open(dbUrl), &gorm.Config{})
 	if err != nil {
+		common.CustomLog(err.Error(), "Error")
 		panic("Failed to connect to database")
 	}
 	DB = db
+
 	db.AutoMigrate(&user.User{})
 
 }
 
 func main() {
-	// password := "secret"
-	// hash, _ := HashPassword(password) // ignore error for the sake of simplicity
-
-	// fmt.Println("Password:", password)
-	// fmt.Println("Hash:    ", hash)
-
-	// match := CheckPasswordHash(password, hash)
-	// fmt.Println("Match:   ", match)
 
 	err := godotenv.Load(".env")
 	if err != nil {
+		common.CustomLog(err.Error(), "Error")
 		log.Fatal("Error loading .env file")
 	}
 	setupDB()
 
 	_, error := loaders.ConnectToRedis().Ping().Result()
+
 	if error != nil {
+		common.CustomLog(error.Error(), "Error")
 		fmt.Println("Issues with connecting to redis", err)
 	}
 
