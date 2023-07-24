@@ -89,3 +89,6 @@ To run the app , do :
 > $ go run main.go
 
 ### API Endpoints
+
+You can clone an already prepared endpoints for testing from postman using
+[Postman](https://documenter.getpostman.com/view/24003787/2s946mbWKX)
