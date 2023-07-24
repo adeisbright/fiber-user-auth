@@ -29,6 +29,13 @@ type UserSchema struct {
 	Password string `json:"password"`
 }
 
+type LoginUser struct {
+	Email     string    `json:"email"`
+	Username  string    `json:"username"`
+	CreatedAt time.Time `json:"createdAt"`
+	ID        uint      `json:"id"`
+}
+
 type Handler struct {
 	DB *gorm.DB
 }
@@ -41,6 +48,14 @@ func (h Handler) AddUser(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"message": "Internal Server Error",
+			"success": false,
+		})
+	}
+
+	err = h.DB.Where("email =?", body.Email).First(&user).Error
+	if err == nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"message": "A user already exists with the selected email",
 			"success": false,
 		})
 	}
@@ -59,7 +74,10 @@ func (h Handler) AddUser(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusNotFound, result.Error.Error())
 	}
 
-	return c.Status(fiber.StatusOK).JSON(&user)
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "Your registration was successful. Login with your email and password",
+		"success": true,
+	})
 }
 
 func (h Handler) HandleLogin(c *fiber.Ctx) error {
@@ -99,10 +117,17 @@ func (h Handler) HandleLogin(c *fiber.Ctx) error {
 		})
 	}
 
+	var loginUser LoginUser
+
+	loginUser.Email = foundUser.Email
+	loginUser.Username = foundUser.Username
+	loginUser.CreatedAt = foundUser.CreatedAt
+	loginUser.ID = foundUser.ID
+
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"token":   token,
 		"success": true,
-		"data":    foundUser,
+		"data":    loginUser,
 	})
 }
 
