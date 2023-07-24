@@ -16,6 +16,7 @@ fresh login.
 1. Project Constraints
 1. Requirements
 1. Downloading the Project
+1. Folder Structure
 1. Dependencies
 1. Environemnt Settings
 1. Starting the App
@@ -67,6 +68,20 @@ therefore deleted.
 To get this project, do :
 
 `git clone https://github.com/adeisbright/fiber-user-auth.git`
+
+### Folder Structure
+
+The folder structure adopted for this project, allows related items and domains to be packed at one place.
+
+The source codes are inside the src directory which is divided into the following
+
+> common : For commonly used codes
+
+> middleware : For request handlers that are middlewares
+
+> loaders : For db setup used especially for redis
+
+> features : Business Logic for each domain resides here
 
 ### Environment Settings
 
