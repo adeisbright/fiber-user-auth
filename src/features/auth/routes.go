@@ -13,6 +13,7 @@ func AuthRoute(route fiber.Router, db *gorm.DB) {
 
 	route.Get("/users", h.GetUsers)
 	route.Post("/sign-up", middleware.ValidateCreateUser, h.AddUser)
-	route.Post("/login", h.CheckLogin)
+	route.Post("/login", h.HandleLogin)
+	route.Get("/logout", ValidateToken, h.HandleLogout)
 
 }

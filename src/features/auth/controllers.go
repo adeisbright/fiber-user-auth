@@ -72,7 +72,7 @@ func (h Handler) AddUser(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(&user)
 }
 
-func (h Handler) CheckLogin(c *fiber.Ctx) error {
+func (h Handler) HandleLogin(c *fiber.Ctx) error {
 	var validUser user.User
 	body := UserSchema{}
 	err := c.BodyParser(&body)
@@ -88,36 +88,71 @@ func (h Handler) CheckLogin(c *fiber.Ctx) error {
 
 	var foundUser user.User
 	if err := h.DB.Where("username = ?", validUser.Username).First(&foundUser).Error; err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "User not found"})
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"message": "Invalid Login Credentials. Try again",
+			"success": false,
+		})
 	}
 
 	if !common.CheckPasswordHash(body.Password, foundUser.Password) {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid credentials"})
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"message": "Invalid credentials. Try again",
+			"success": false,
+		})
 	}
 
 	token, err := GenerateJWTToken(foundUser.ID)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to generate JWT token"})
-	}
-
-	expirationTime := time.Now().Add(time.Hour * 24).Unix()
-	redisKey := "user:" + fmt.Sprint(foundUser.ID)
-	err = loaders.ConnectToRedis().Set(redisKey, validUser.Username, time.Duration(expirationTime)).Err()
-	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"message": "Internal Server Error",
 			"success": false,
-			"token":   "",
 		})
 	}
 
-	return c.JSON(fiber.Map{"token": token})
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"token":   token,
+		"success": true,
+		"data":    foundUser,
+	})
+}
+
+func (h Handler) HandleLogout(c *fiber.Ctx) error {
+	authHeader := c.Get("Authorization")
+	tokenString := authHeader[7:]
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		return jwtSecret, nil
+	})
+
+	if err != nil || !token.Valid {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"message": "Bad Token",
+			"success": false,
+		})
+	}
+
+	blacklistedTokenKey := "token:blacklist:" + tokenString
+	err = loaders.ConnectToRedis().Set(blacklistedTokenKey, tokenString, 0).Err()
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"success": false,
+			"message": "Internal Server Error",
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "Successfully logged out",
+		"success": true,
+	})
 }
 
 func ValidateToken(c *fiber.Ctx) error {
-	// Extract the token from the Authorization header
+
 	authHeader := c.Get("Authorization")
 	if len(authHeader) < 8 || authHeader[:7] != "Bearer " {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"message": "Missing Authorization Header",
+			"success": false,
+		})
 	}
 
 	tokenString := authHeader[7:]
@@ -125,12 +160,27 @@ func ValidateToken(c *fiber.Ctx) error {
 		return jwtSecret, nil
 	})
 	if err != nil || !token.Valid {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"message": "Invalid Authorization Token",
+			"success": false,
+		})
+	}
+
+	blacklistedTokenKey := "token:blacklist:" + tokenString
+	data, _ := loaders.ConnectToRedis().Get(blacklistedTokenKey).Result()
+	if len(data) > 0 {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"message": "Session Expired. Please Login Again",
+			"success": false,
+		})
 	}
 
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"message": "Invalid Authorization Token",
+			"success": false,
+		})
 	}
 
 	userID := uint(claims["user_id"].(float64))
