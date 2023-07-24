@@ -29,18 +29,15 @@ type UserSchema struct {
 	Password string `json:"password"`
 }
 
-type Handler struct {
-	DB *gorm.DB
+type LoginUser struct {
+	Email     string    `json:"email"`
+	Username  string    `json:"username"`
+	CreatedAt time.Time `json:"createdAt"`
+	ID        uint      `json:"id"`
 }
 
-func (h Handler) GetUsers(c *fiber.Ctx) error {
-	var users []user.User
-
-	if result := h.DB.Find(&users); result.Error != nil {
-		return fiber.NewError(fiber.StatusNotFound, result.Error.Error())
-	}
-
-	return c.Status(fiber.StatusOK).JSON(&users)
+type Handler struct {
+	DB *gorm.DB
 }
 
 func (h Handler) AddUser(c *fiber.Ctx) error {
@@ -51,6 +48,14 @@ func (h Handler) AddUser(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"message": "Internal Server Error",
+			"success": false,
+		})
+	}
+
+	err = h.DB.Where("email =?", body.Email).First(&user).Error
+	if err == nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"message": "A user already exists with the selected email",
 			"success": false,
 		})
 	}
@@ -69,7 +74,10 @@ func (h Handler) AddUser(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusNotFound, result.Error.Error())
 	}
 
-	return c.Status(fiber.StatusOK).JSON(&user)
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "Your registration was successful. Login with your email and password",
+		"success": true,
+	})
 }
 
 func (h Handler) HandleLogin(c *fiber.Ctx) error {
@@ -109,10 +117,17 @@ func (h Handler) HandleLogin(c *fiber.Ctx) error {
 		})
 	}
 
+	var loginUser LoginUser
+
+	loginUser.Email = foundUser.Email
+	loginUser.Username = foundUser.Username
+	loginUser.CreatedAt = foundUser.CreatedAt
+	loginUser.ID = foundUser.ID
+
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"token":   token,
 		"success": true,
-		"data":    foundUser,
+		"data":    loginUser,
 	})
 }
 
@@ -141,78 +156,6 @@ func (h Handler) HandleLogout(c *fiber.Ctx) error {
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"message": "Successfully logged out",
-		"success": true,
-	})
-}
-
-func ValidateToken(c *fiber.Ctx) error {
-
-	authHeader := c.Get("Authorization")
-	if len(authHeader) < 8 || authHeader[:7] != "Bearer " {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-			"message": "Missing Authorization Header",
-			"success": false,
-		})
-	}
-
-	tokenString := authHeader[7:]
-	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		return jwtSecret, nil
-	})
-	if err != nil || !token.Valid {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-			"message": "Invalid Authorization Token",
-			"success": false,
-		})
-	}
-
-	blacklistedTokenKey := "token:blacklist:" + tokenString
-	data, _ := loaders.ConnectToRedis().Get(blacklistedTokenKey).Result()
-	if len(data) > 0 {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-			"message": "Session Expired. Please Login Again",
-			"success": false,
-		})
-	}
-
-	claims, ok := token.Claims.(jwt.MapClaims)
-	if !ok {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-			"message": "Invalid Authorization Token",
-			"success": false,
-		})
-	}
-
-	userID := uint(claims["user_id"].(float64))
-
-	c.Locals("userId", userID)
-	return c.Next()
-
-}
-
-func GetUser(c *fiber.Ctx) error {
-	userId := c.Params("id")
-	loggedInUserId := c.Locals("userId")
-	if userId != loggedInUserId {
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
-			"success": false,
-			"message": "You cannot view this users profile",
-		})
-	}
-
-	redisKey := "user:" + userId
-	data := loaders.ConnectToRedis().Get(redisKey)
-	fmt.Println(data)
-
-	if data == nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"success": false,
-			"token":   "",
-		})
-	}
-	return c.Status(fiber.StatusOK).JSON(fiber.Map{
-		"message": "Welcome to your profile",
-		"data":    userId,
 		"success": true,
 	})
 }
