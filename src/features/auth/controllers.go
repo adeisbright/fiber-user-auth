@@ -33,16 +33,6 @@ type Handler struct {
 	DB *gorm.DB
 }
 
-func (h Handler) GetUsers(c *fiber.Ctx) error {
-	var users []user.User
-
-	if result := h.DB.Find(&users); result.Error != nil {
-		return fiber.NewError(fiber.StatusNotFound, result.Error.Error())
-	}
-
-	return c.Status(fiber.StatusOK).JSON(&users)
-}
-
 func (h Handler) AddUser(c *fiber.Ctx) error {
 	var user user.User
 	body := UserSchema{}
@@ -141,78 +131,6 @@ func (h Handler) HandleLogout(c *fiber.Ctx) error {
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"message": "Successfully logged out",
-		"success": true,
-	})
-}
-
-func ValidateToken(c *fiber.Ctx) error {
-
-	authHeader := c.Get("Authorization")
-	if len(authHeader) < 8 || authHeader[:7] != "Bearer " {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-			"message": "Missing Authorization Header",
-			"success": false,
-		})
-	}
-
-	tokenString := authHeader[7:]
-	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		return jwtSecret, nil
-	})
-	if err != nil || !token.Valid {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-			"message": "Invalid Authorization Token",
-			"success": false,
-		})
-	}
-
-	blacklistedTokenKey := "token:blacklist:" + tokenString
-	data, _ := loaders.ConnectToRedis().Get(blacklistedTokenKey).Result()
-	if len(data) > 0 {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-			"message": "Session Expired. Please Login Again",
-			"success": false,
-		})
-	}
-
-	claims, ok := token.Claims.(jwt.MapClaims)
-	if !ok {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-			"message": "Invalid Authorization Token",
-			"success": false,
-		})
-	}
-
-	userID := uint(claims["user_id"].(float64))
-
-	c.Locals("userId", userID)
-	return c.Next()
-
-}
-
-func GetUser(c *fiber.Ctx) error {
-	userId := c.Params("id")
-	loggedInUserId := c.Locals("userId")
-	if userId != loggedInUserId {
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
-			"success": false,
-			"message": "You cannot view this users profile",
-		})
-	}
-
-	redisKey := "user:" + userId
-	data := loaders.ConnectToRedis().Get(redisKey)
-	fmt.Println(data)
-
-	if data == nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"success": false,
-			"token":   "",
-		})
-	}
-	return c.Status(fiber.StatusOK).JSON(fiber.Map{
-		"message": "Welcome to your profile",
-		"data":    userId,
 		"success": true,
 	})
 }

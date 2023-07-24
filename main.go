@@ -9,6 +9,7 @@ import (
 	"github.com/adeisbright/fiber-user-auth/src/features/auth"
 	"github.com/adeisbright/fiber-user-auth/src/features/user"
 	"github.com/adeisbright/fiber-user-auth/src/loaders"
+	"github.com/adeisbright/fiber-user-auth/src/middleware"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/compress"
 	"github.com/gofiber/fiber/v2/middleware/cors"
@@ -42,8 +43,9 @@ func setupRoutes(app *fiber.App) {
 
 	api := app.Group("")
 	auth.AuthRoute(api.Group("/auth"), DB)
-	app.Use(auth.ValidateToken)
-	app.Get("/users/:id", auth.GetUser)
+	app.Use(middleware.ValidateToken)
+
+	user.UserRoute(api.Group("/users"))
 }
 
 //Database Setup
