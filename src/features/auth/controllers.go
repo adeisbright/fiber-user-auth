@@ -83,11 +83,11 @@ func (h Handler) HandleLogin(c *fiber.Ctx) error {
 		})
 	}
 
-	validUser.Username = body.Username
+	validUser.Email = body.Email
 	validUser.Password = body.Password
 
 	var foundUser user.User
-	if err := h.DB.Where("username = ?", validUser.Username).First(&foundUser).Error; err != nil {
+	if err := h.DB.Where("email = ?", validUser.Email).First(&foundUser).Error; err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"message": "Invalid Login Credentials. Try again",
 			"success": false,
